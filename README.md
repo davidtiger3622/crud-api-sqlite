@@ -1,6 +1,6 @@
 # Task API
 
-A simple Express CRUD API for managing tasks.
+A simple Express CRUD API for managing tasks, backed by a SQLite database.
 
 ## Getting started
 
@@ -15,6 +15,24 @@ Start the server:
 The API runs at http://localhost:3000.
 
 OpenAPI docs (Swagger UI) are at http://localhost:3000/docs. The spec lives in openapi.json.
+
+## Database
+
+This project uses SQLite instead of an in-memory array, so your tasks survive a server restart.
+
+Why SQLite: it's a single file with zero setup — no separate database server to install or configure, which makes it ideal for a small project like this one.
+
+Where it lives: the database file is tasks.db, created automatically the first time the server runs. It's git-ignored, so a fresh clone always starts with a clean database and 3 seeded example tasks.
+
+Example query run by hand in DB Browser for SQLite:
+
+    SELECT COUNT(*) FROM tasks;
+
+Returned: 4 (before clearing the table during the Stage 4 SQL exercise).
+
+Screenshot of the database open in DB Browser:
+
+![tasks table in DB Browser](./db-browser-screenshot.png)
 
 ## Endpoints
 
