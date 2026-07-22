@@ -1,5 +1,4 @@
-// Task API — CRUD server for a to-do list.
-// Stage 1: GET routes now read from SQLite. Write routes still in-memory (Stage 2/3 next).
+// Task API — CRUD server for a to-do list, now backed by SQLite.
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
@@ -10,7 +9,8 @@ const port = 3000;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// In-memory array — still backs POST/PUT/DELETE/reset until Stage 2/3 convert them.
+// Still in-memory for now — only /stats and /reset use this (not required
+// by the assignment to be converted, can be left as-is or done as an extra).
 // ---------------------------------------------------------------------------
 const SEED_TASKS = [
   { id: 1, title: 'Buy groceries', done: false },
@@ -43,7 +43,7 @@ app.get('/health', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Stage 1 — Read: now backed by SQLite
+// Stage 1 — Read (SQLite)
 // ---------------------------------------------------------------------------
 app.get('/tasks', (req, res) => {
   let query = 'SELECT * FROM tasks';
@@ -88,7 +88,7 @@ app.get('/tasks/:id', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Extras — stats, reset. Still in-memory for now — Stage 2/3 will convert.
+// Extras — stats, reset. Still in-memory.
 // ---------------------------------------------------------------------------
 app.get('/stats', (req, res) => {
   const done = tasks.filter((t) => t.done).length;
@@ -105,7 +105,7 @@ app.post('/reset', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Stage 3 (not yet converted) — Create. Still in-memory.
+// Stage 2 — Create (SQLite)
 // ---------------------------------------------------------------------------
 app.post('/tasks', (req, res) => {
   const { title } = req.body;
@@ -122,13 +122,13 @@ app.post('/tasks', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Update & Delete. Still in-memory — Stage 3 next.
+// Stage 3 — Update & Delete (SQLite)
 // ---------------------------------------------------------------------------
 app.put('/tasks/:id', (req, res) => {
   const id = Number(req.params.id);
-  const task = tasks.find((t) => t.id === id);
+  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
 
-  if (!task) {
+  if (!existing) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
@@ -140,32 +140,32 @@ app.put('/tasks/:id', (req, res) => {
     return res.status(400).json({ error: 'request body must include title and/or done' });
   }
 
-  if (hasTitle) {
-    if (title === null || String(title).trim() === '') {
-      return res.status(400).json({ error: 'title cannot be empty' });
-    }
-    task.title = String(title).trim();
+  if (hasTitle && (title === null || String(title).trim() === '')) {
+    return res.status(400).json({ error: 'title cannot be empty' });
   }
 
-  if (hasDone) {
-    if (typeof done !== 'boolean') {
-      return res.status(400).json({ error: 'done must be a boolean' });
-    }
-    task.done = done;
+  if (hasDone && typeof done !== 'boolean') {
+    return res.status(400).json({ error: 'done must be a boolean' });
   }
 
-  res.json(task);
+  const newTitle = hasTitle ? String(title).trim() : existing.title;
+  const newDone = hasDone ? (done ? 1 : 0) : existing.done;
+
+  db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(newTitle, newDone, id);
+
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  res.json({ ...updated, done: Boolean(updated.done) });
 });
 
 app.delete('/tasks/:id', (req, res) => {
   const id = Number(req.params.id);
-  const index = tasks.findIndex((t) => t.id === id);
+  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
 
-  if (index === -1) {
+  if (!existing) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
-  tasks.splice(index, 1);
+  db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
   res.status(204).send();
 });
 
