@@ -114,11 +114,11 @@ app.post('/tasks', (req, res) => {
     return res.status(400).json({ error: 'title is required and cannot be empty' });
   }
 
-  const id = tasks.length === 0 ? 1 : Math.max(...tasks.map((t) => t.id)) + 1;
-  const task = { id, title: String(title).trim(), done: false };
+  const insert = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
+  const result = insert.run(String(title).trim(), 0);
 
-  tasks.push(task);
-  res.status(201).json(task);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
+  res.status(201).json({ ...task, done: Boolean(task.done) });
 });
 
 // ---------------------------------------------------------------------------
