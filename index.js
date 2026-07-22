@@ -1,12 +1,17 @@
-// Task API — a small in-memory CRUD server for a to-do list.
+// Task API — CRUD server for a to-do list.
+// Stage 1: GET routes now read from SQLite. Write routes still in-memory (Stage 2/3 next).
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
+const db = require('./db');
 const app = express();
 const port = 3000;
 
 app.use(express.json());
 
+// ---------------------------------------------------------------------------
+// In-memory array — still backs POST/PUT/DELETE/reset until Stage 2/3 convert them.
+// ---------------------------------------------------------------------------
 const SEED_TASKS = [
   { id: 1, title: 'Buy groceries', done: false },
   { id: 2, title: 'Walk the dog', done: true },
@@ -20,6 +25,9 @@ function resetTasks() {
   tasks.push(...SEED_TASKS.map((task) => ({ ...task })));
 }
 
+// ---------------------------------------------------------------------------
+// Swagger UI at /docs
+// ---------------------------------------------------------------------------
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
 
 app.get('/', (req, res) => {
@@ -34,15 +42,20 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// ---------------------------------------------------------------------------
+// Stage 1 — Read: now backed by SQLite
+// ---------------------------------------------------------------------------
 app.get('/tasks', (req, res) => {
-  let result = tasks;
+  let query = 'SELECT * FROM tasks';
+  const params = [];
+  const conditions = [];
 
   if (req.query.done !== undefined) {
     if (req.query.done !== 'true' && req.query.done !== 'false') {
       return res.status(400).json({ error: 'done must be true or false' });
     }
-    const done = req.query.done === 'true';
-    result = result.filter((t) => t.done === done);
+    conditions.push('done = ?');
+    params.push(req.query.done === 'true' ? 1 : 0);
   }
 
   if (req.query.search !== undefined) {
@@ -50,13 +63,33 @@ app.get('/tasks', (req, res) => {
     if (word === '') {
       return res.status(400).json({ error: 'search must not be empty' });
     }
-    const lower = word.toLowerCase();
-    result = result.filter((t) => t.title.toLowerCase().includes(lower));
+    conditions.push('title LIKE ?');
+    params.push(`%${word}%`);
   }
 
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  const rows = db.prepare(query).all(...params);
+  const result = rows.map((t) => ({ ...t, done: Boolean(t.done) }));
   res.json(result);
 });
 
+app.get('/tasks/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+
+  if (!task) {
+    return res.status(404).json({ error: `Task ${id} not found` });
+  }
+
+  res.json({ ...task, done: Boolean(task.done) });
+});
+
+// ---------------------------------------------------------------------------
+// Extras — stats, reset. Still in-memory for now — Stage 2/3 will convert.
+// ---------------------------------------------------------------------------
 app.get('/stats', (req, res) => {
   const done = tasks.filter((t) => t.done).length;
   res.json({
@@ -71,6 +104,9 @@ app.post('/reset', (req, res) => {
   res.json(tasks);
 });
 
+// ---------------------------------------------------------------------------
+// Stage 3 (not yet converted) — Create. Still in-memory.
+// ---------------------------------------------------------------------------
 app.post('/tasks', (req, res) => {
   const { title } = req.body;
 
@@ -85,17 +121,9 @@ app.post('/tasks', (req, res) => {
   res.status(201).json(task);
 });
 
-app.get('/tasks/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const task = tasks.find((t) => t.id === id);
-
-  if (!task) {
-    return res.status(404).json({ error: `Task ${id} not found` });
-  }
-
-  res.json(task);
-});
-
+// ---------------------------------------------------------------------------
+// Update & Delete. Still in-memory — Stage 3 next.
+// ---------------------------------------------------------------------------
 app.put('/tasks/:id', (req, res) => {
   const id = Number(req.params.id);
   const task = tasks.find((t) => t.id === id);
